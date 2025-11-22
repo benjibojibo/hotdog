@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Zombie Shooter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    background: #90c070;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+canvas {
+    border: 8px solid #305030;
+    image-rendering: pixelated;
+}
+
+#uiBox {
+    position: absolute;
+    bottom: 20px;
+    width: 480px;
+    padding: 10px;
+    font-size: 20px;
+    color: #203020;
+    background: #e0f8d0;
+    border: 4px solid #506850;
+    font-family: monospace;
+}
+
+#gameOver {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.8);
+    color: #e0f8d0;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    font-size: 32px;
+    font-family: monospace;
+}
+
+button {
+    margin-top: 20px;
+    padding: 12px 20px;
+    font-size: 22px;
+    border: 4px solid #203020;
+    background: #e0f8d0;
+    cursor: pointer;
+    font-family: monospace;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="480" height="320"></canvas>
+
+<div id="uiBox">Score: <span id="score">0</span></div>
+
+<div id="gameOver">
+    <div>GAME OVER</div>
+    <button onclick="restart()">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+const scoreEl = document.getElementById("score");
+
+// Pokémon GBC palette colors
+const OUTLINE = "#2b2b26";
+const PLAYER_LIGHT = "#e8f8d8";
+const PLAYER_MED = "#c0d0a0";
+const PLAYER_DARK = "#708860";
+
+const ZOMBIE_LIGHT = "#b4ff76";
+const ZOMBIE_DARK = "#4c8022";
+
+const GRASS_1 = "#8ccf68";
+const GRASS_2 = "#7abe56";
+
+// ---------------------- TILE BACKGROUND ----------------------
+const TILE = 16;
+function drawGrassTiles() {
+    for (let y = 0; y < H; y += TILE) {
+        for (let x = 0; x < W; x += TILE) {
+            ctx.fillStyle = ((x / TILE + y / TILE) % 2 == 0) ? GRASS_1 : GRASS_2;
+            ctx.fillRect(x, y, TILE, TILE);
+        }
+    }
+}
+
+// ---------------------- PLAYER -------------------------------
+const player = {
+    x: W/2,
+    y: H/2,
+    size: 20,
+    speed: 2,
+    dirX: 1,
+    dirY: 0
+};
+
+// Draw more detailed Pokémon-style sprite
+function drawPlayerSprite(px, py) {
+    // outline
+    ctx.fillStyle = OUTLINE;
+    ctx.fillRect(px-12, py-12, 24, 24);
+
+    // head
+    ctx.fillStyle = PLAYER_LIGHT;
+    ctx.fillRect(px-8, py-10, 16, 12);
+
+    // hair/shadow
+    ctx.fillStyle = PLAYER_DARK;
+    ctx.fillRect(px-8, py-10, 16, 4);
+
+    // body
+    ctx.fillStyle = PLAYER_MED;
+    ctx.fillRect(px-6, py+2, 12, 12);
+
+    // feet
+    ctx.fillStyle = PLAYER_DARK;
+    ctx.fillRect(px-6, py+14, 5, 4);
+    ctx.fillRect(px+1, py+14, 5, 4);
+}
+
+function drawPlayer() {
+    drawPlayerSprite(player.x, player.y);
+}
+
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+function updatePlayer() {
+    if (keys["w"] || keys["arrowup"]) { player.y -= player.speed; player.dirX=0; player.dirY=-1; }
+    if (keys["s"] || keys["arrowdown"]) { player.y += player.speed; player.dirX=0; player.dirY=1; }
+    if (keys["a"] || keys["arrowleft"]) { player.x -= player.speed; player.dirX=-1; player.dirY=0; }
+    if (keys["d"] || keys["arrowright"]) { player.x += player.speed; player.dirX=1; player.dirY=0; }
+
+    // shooting
+    if (keys[" "] && frame % 12 === 0) shoot();
+
+    // boundaries
+    player.x = Math.max(20, Math.min(W-20, player.x));
+    player.y = Math.max(20, Math.min(H-20, player.y));
+}
+
+// ---------------------- BULLETS -------------------------------
+let bullets = [];
+function shoot() {
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        dx: player.dirX,
+        dy: player.dirY,
+        speed: 5,
+        size: 6
+    });
+}
+
+function updateBullets() {
+    bullets.forEach((b, i) => {
+        b.x += b.dx * b.speed;
+        b.y += b.dy * b.speed;
+        if (b.x<0||b.x>W||b.y<0||b.y>H) bullets.splice(i,1);
+    });
+}
+
+function drawBullets() {
+    bullets.forEach(b => {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(b.x-3, b.y-3, 6, 6);
+        ctx.strokeStyle = OUTLINE;
+        ctx.strokeRect(b.x-3, b.y-3, 6, 6);
+    });
+}
+
+// ---------------------- ZOMBIES -------------------------------
+let zombies = [];
+let spawnRate = 80;
+function spawnZombie() {
+    const edge = Math.floor(Math.random()*4);
+    let x, y;
+    if (edge === 0) { x = Math.random()*W; y = -30; }
+    if (edge === 1) { x = Math.random()*W; y = H+30; }
+    if (edge === 2) { x = -30; y = Math.random()*H; }
+    if (edge === 3) { x = W+30; y = Math.random()*H; }
+
+    zombies.push({
+        x, y,
+        size: 20,
+        speed: 0.6
+    });
+}
+
+function drawZombie(z) {
+    // outline
+    ctx.fillStyle = OUTLINE;
+    ctx.fillRect(z.x-12, z.y-12, 24, 24);
+
+    // body
+    ctx.fillStyle = ZOMBIE_LIGHT;
+    ctx.fillRect(z.x-10, z.y-10, 20, 20);
+
+    // face shadow
+    ctx.fillStyle = ZOMBIE_DARK;
+    ctx.fillRect(z.x-10, z.y-2, 20, 4);
+}
+
+function updateZombies() {
+    zombies.forEach((z, zi) => {
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const d = Math.hypot(dx, dy);
+
+        z.x += dx/d * z.speed;
+        z.y += dy/d * z.speed;
+
+        // hit by bullet
+        bullets.forEach((b, bi) => {
+            if (Math.hypot(z.x-b.x, z.y-b.y) < 14) {
+                zombies.splice(zi, 1);
+                bullets.splice(bi, 1);
+                score += 10;
+                scoreEl.textContent = score;
+            }
+        });
+
+        // touching player
+        if (Math.hypot(z.x-player.x, z.y-player.y) < 18) {
+            alive = false;
+            document.getElementById("gameOver").style.display = "flex";
+        }
+    });
+}
+
+// ---------------------- GAME LOOP ----------------------
+let frame = 0;
+let alive = true;
+let score = 0;
+
+function loop() {
+    if (!alive) return;
+
+    drawGrassTiles();
+    updatePlayer();
+    updateBullets();
+    updateZombies();
+
+    drawPlayer();
+    drawBullets();
+    zombies.forEach(drawZombie);
+
+    frame++;
+
+    // score over time
+    if (frame % 10 === 0) {
+        score++;
+        scoreEl.textContent = score;
+    }
+
+    // spawn zombies
+    if (frame % spawnRate === 0) {
+        spawnZombie();
+        if (spawnRate > 30) spawnRate--;
+    }
+
+    requestAnimationFrame(loop);
+}
+
+function restart() {
+    zombies = [];
+    bullets = [];
+    score = 0;
+    spawnRate = 80;
+    frame = 0;
+    alive = true;
+    player.x = W/2;
+    player.y = H/2;
+    document.getElementById("gameOver").style.display = "none";
+    scoreEl.textContent = "0";
+    loop();
+}
+
+loop();
+</script>
+
+</body>
+</html>
