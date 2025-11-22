@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GBA Forest Quest — Multi-Level</title>
+<style>
+body {
+    margin:0;
+    background:#000;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+canvas {
+    border:6px solid #203818;
+    image-rendering:pixelated;
+}
+#msg {
+    position:fixed;
+    top:0; left:0;
+    width:100vw; height:100vh;
+    background:rgba(0,0,0,0.8);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    color:#fff;
+    font-family:monospace;
+    font-size:32px;
+}
+button {
+    margin-top:20px;
+    padding:10px 20px;
+    font-size:24px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="480" height="320"></canvas>
+
+<div id="msg">
+    <div id="msgtext"></div>
+    <button onclick="restart()">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+// ====================================
+// TILESET COLORS (GBA STYLE)
+// ====================================
+const COLORS = {
+    grass1:"#6bb24d",
+    grass2:"#7bc45c",
+    treeDark:"#1d3a18",
+    treeMid:"#2a4c22",
+    treeTop:"#3c7a34",
+    cliff:"#84644a",
+    water:"#4aa3d8",
+    path:"#d6c48a",
+    shrine:"#ffd860"
+};
+
+// ====================================
+// PLAYER
+// ====================================
+let player = {
+    x: 80,
+    y: 200,
+    speed: 1.8,
+    dirX: 1,
+    dirY: 0,
+};
+
+// sprite: same as before (shortened for space)
+const playerSprite = [
+    [null,null,null,null,"#781010","#D82028","#D82028","#781010",null,null,null,null],
+    [null,null,null,"#781010","#D82028","#D82028","#D82028","#D82028","#781010",null,null,null],
+    [null,null,"#781010","#D82028","#D82028","#D82028","#D82028","#D82028","#781010","#781010",null,null],
+    [null,"#781010","#D82028","#D82028","#D82028","#781010","#781010","#D82028","#D82028","#781010",null,null],
+    [null,"#000","#F6D6AD","#F6D6AD","#E0B890","#E0B890","#E0B890","#F6D6AD","#F6D6AD","#000",null,null],
+    [null,"#000","#F6D6AD","#000","#F6D6AD","#E0B890","#F6D6AD","#000","#F6D6AD","#000",null,null],
+    [null,"#000","#E0B890","#F6D6AD","#F6D6AD","#F6D6AD","#F6D6AD","#E0B890","#F6D6AD","#000",null,null],
+    [null,"#204890","#3060C0","#3060C0","#3060C0","#3060C0","#3060C0","#3060C0","#3060C0","#204890",null,null],
+    [null,"#204890","#3060C0","#3060C0","#FFFFDE","#FFFFDE","#FFFFDE","#3060C0","#3060C0","#204890",null,null],
+    [null,"#204890","#3060C0","#FFFFDE","#FFFFDE","#FFFFDE","#FFFFDE","#FFFFDE","#3060C0","#204890",null,null],
+    [null,"#101820","#203040","#203040","#A02020","#A02020","#A02020","#203040","#203040","#101820",null,null],
+    [null,"#101820","#203040","#203040","#203040","#203040","#203040","#203040","#203040","#101820",null,null],
+];
+
+// ====================================
+// TILEMAPS (NON-SQUARE LEVELS)
+// ====================================
+const LEVELS = [
+{
+name:"Forest Trail",
+startX:80, startY:250,
+map: [
+"TTTTTTTTTTTTTTTTTTTTTTTTTT",
+"TGGGGGGGGGTTTGGGGGGGGGGGTT",
+"TGPPPGGGGGPGGPGGGPPPPPGGTT",
+"TGPPPPPGGGPGGPGGPPPPPPGGTT",
+"TGPPPPTGGGPGGPGGGPPTPPGGTT",
+"TGPPPPPGGGPGGPGGPPPPPPGGTT",
+"TGGGGGGGGGPGGPGGGGGGGGGGTT",
+"TGGGGGGGGGPGGPGGGGGGGGPGTT",
+"TGGGGGGGGGPGGPGGGGGPPPGGTT",
+"TGGGGGGGGGPGGPGGPPPPTPPGTT",
+"TGGGGGGGGGPGGPGGGGGGGGGGTT",
+"TGGGGGGGGGPGGPGGGGGGGGGGTT",
+"TGGGGGGGGGPGGPGGGGGGGGGGTT",
+"TGGGGGGGGGPEEPGGGGGGGGGGTT",
+"TTTTTTTTTTTTTTTTTTTTTTTTTT"
+],
+exit:{x:11, y:13}
+},
+
+{
+name:"Lake & Cliffs",
+startX:60, startY:260,
+map: [
+"TTTTTTTTTTTTTTTTTTTTT",
+"TGGGGGGGGGGGGGGGGGGGT",
+"TGPPPPPPPPPTPPPPPPPGT",
+"TGPPPWWWWWWWWWWPPPGGT",
+"TGPPPWWWWWWWWWWPPPGGT",
+"TGPPPWWWWCCWWWWPPPGGT",
+"TGPPPWWWWCCWWWWPPPGGT",
+"TGPPPGGGGCCGGGGPPPGGT",
+"TGPPPGGGGCCGGGGPPPGGT",
+"TGPPPGGGGCCGGGGPPPGGT",
+"TGPPPGPPPGGPPPPPPTGGT",
+"TGPPPGPPPGGPPGGGGGGGT",
+"TGGGGGPPPEEGGGGGGGGGT",
+"TTTTTTTTTTTTTTTTTTTTT"
+],
+exit:{x:10, y:12}
+},
+
+{
+name:"Shrine Interior",
+startX:200, startY:260,
+map: [
+"CCCCCCCCCCCCCCCCCCC",
+"C......PPPPP......C",
+"C......PSSSP......C",
+"C......PSSSP......C",
+"C......PSSSP......C",
+"C......PPPPP......C",
+"C..................C",
+"C..................C",
+"C........EE........C",
+"C..................C",
+"CCCCCCCCCCCCCCCCCCC",
+],
+exit:{boss:true}
+}
+];
+
+// TILE SIZE
+const TS = 16;
+
+// Zombies and bullets
+let zombies = [];
+let bullets = [];
+
+// INPUT
+let keys = {};
+onkeydown = (e)=>keys[e.key.toLowerCase()]=true;
+onkeyup   = (e)=>keys[e.key.toLowerCase()]=false;
+
+// MESSAGE BOX
+const msg = document.getElementById("msg");
+const msgtext = document.getElementById("msgtext");
+
+let currentLevel = 0;
+let frame = 0;
+let alive = true;
+
+// ====================================
+// DRAWING
+// ====================================
+function drawSprite(sprite, x, y, scale=2){
+    for (let r=0; r<sprite.length; r++){
+        for (let c=0; c<sprite[r].length; c++){
+            const p = sprite[r][c];
+            if (p){
+                ctx.fillStyle = p;
+                ctx.fillRect(x+c*scale, y+r*scale, scale, scale);
+            }
+        }
+    }
+}
+
+// TILE DRAW
+function drawTile(tile,x,y){
+    if (tile==="G") ctx.fillStyle = COLORS.grass1;
+    if (tile==="P") ctx.fillStyle = COLORS.path;
+    if (tile==="T") ctx.fillStyle = COLORS.treeTop;
+    if (tile==="W") ctx.fillStyle = COLORS.water;
+    if (tile==="C") ctx.fillStyle = COLORS.cliff;
+    if (tile==="S") ctx.fillStyle = COLORS.shrine;
+    if (tile==="E") ctx.fillStyle = "#ffff80";
+
+    ctx.fillRect(x,y,TS,TS);
+}
+
+// ====================================
+// LEVEL MANAGEMENT
+// ====================================
+function loadLevel(n){
+    currentLevel = n;
+    const L = LEVELS[n];
+    player.x = L.startX;
+    player.y = L.startY;
+    zombies = [];
+    bullets = [];
+    frame = 0;
+    alive = true;
+}
+
+// ====================================
+// COLLISION
+// ====================================
+function isSolid(tile){
+    return tile==="T" || tile==="C" || tile==="W";
+}
+
+function tileAt(px,py){
+    const L = LEVELS[currentLevel];
+    const tx = Math.floor(px/TS);
+    const ty = Math.floor(py/TS);
+    if (ty<0 || ty>=L.map.length) return "T";
+    if (tx<0 || tx>=L.map[0].length) return "T";
+    return L.map[ty][tx];
+}
+
+// ====================================
+// PLAYER UPDATE
+// ====================================
+function updatePlayer(){
+    let nx = player.x;
+    let ny = player.y;
+
+    if (keys["w"]){ ny -= player.speed; player.dirX=0; player.dirY=-1; }
+    if (keys["s"]){ ny += player.speed; player.dirX=0; player.dirY=1;  }
+    if (keys["a"]){ nx -= player.speed; player.dirX=-1;player.dirY=0; }
+    if (keys["d"]){ nx += player.speed; player.dirX=1; player.dirY=0; }
+
+    if (!isSolid(tileAt(nx,player.y))) player.x = nx;
+    if (!isSolid(tileAt(player.x,ny))) player.y = ny;
+
+    if (keys[" "] && frame%12===0)
+        bullets.push({x:player.x+8, y:player.y+12, dx:player.dirX, dy:player.dirY, speed:4});
+}
+
+// ====================================
+// ZOMBIES
+// ====================================
+function spawnZombie(){
+    const L = LEVELS[currentLevel];
+    zombies.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        speed: 0.6
+    });
+}
+
+function updateZombies(){
+    zombies.forEach((z,zi)=>{
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const d = Math.hypot(dx,dy);
+        z.x += dx/d*z.speed;
+        z.y += dy/d*z.speed;
+
+        if (Math.hypot(z.x-player.x,z.y-player.y)<12){
+            alive=false;
+            gameOver("You were caught!");
+        }
+
+        bullets.forEach((b,bi)=>{
+            if (Math.hypot(b.x-z.x,b.y-z.y)<12){
+                zombies.splice(zi,1);
+                bullets.splice(bi,1);
+            }
+        });
+    });
+}
+
+// ====================================
+// EXIT LOGIC
+// ====================================
+function checkExit(){
+    const L = LEVELS[currentLevel];
+    const t = tileAt(player.x, player.y);
+
+    if (t==="E"){
+        if (L.exit.boss){
+            gameOver("You reached the shrine and completed the game!");
+        } else {
+            loadLevel(currentLevel+1);
+        }
+    }
+}
+
+// ====================================
+// DRAW LEVEL
+// ====================================
+function drawLevel(){
+    const L = LEVELS[currentLevel];
+    for (let y=0;y<L.map.length;y++){
+        for (let x=0;x<L.map[y].length;x++){
+            drawTile(L.map[y][x], x*TS, y*TS);
+        }
+    }
+}
+
+// ====================================
+// RENDER LOOP
+// ====================================
+function loop(){
+    if (!alive) return;
+    frame++;
+
+    ctx.clearRect(0,0,W,H);
+    drawLevel();
+    updatePlayer();
+    updateZombies();
+
+    // Draw bullets
+    ctx.fillStyle="#fff";
+    bullets.forEach(b=>{
+        b.x+=b.dx*b.speed;
+        b.y+=b.dy*b.speed;
+        ctx.fillRect(b.x,b.y,4,4);
+    });
+
+    // Remove bad bullets
+    bullets = bullets.filter(b=>b.x>0 && b.x<W && b.y>0 && b.y<H);
+
+    drawSprite(playerSprite, player.x, player.y, 2);
+
+    if (frame%180===0) spawnZombie();
+    checkExit();
+
+    requestAnimationFrame(loop);
+}
+
+// ====================================
+// GAME OVER
+// ====================================
+function gameOver(text){
+    msgtext.innerText = text;
+    msg.style.display = "flex";
+}
+
+function restart(){
+    msg.style.display="none";
+    loadLevel(0);
+    loop();
+}
+
+loadLevel(0);
+loop();
+</script>
+
+</body>
+</html>
+
