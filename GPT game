@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GBA Forest Quest</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+canvas {
+    image-rendering: pixelated;
+    border: 6px solid #1d2f1a;
+}
+#message {
+    position: fixed;
+    top: 0;
+    left: 0;
+    font-family: monospace;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    color: #fff;
+    font-size: 40px;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+button {
+    padding: 10px 20px;
+    font-size: 24px;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="480" height="320"></canvas>
+
+<div id="message">
+    <div id="text"></div>
+    <button onclick="restart()">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const W = canvas.width;
+const H = canvas.height;
+
+// =========================
+// COLOR PALETTE (GBA RGB555)
+// =========================
+const GBA = {
+    black: "#000000",
+    white: "#FFFFDE",
+    skin1: "#F6D6AD",
+    skin2: "#E0B890",
+    red1: "#C03030",
+    red2: "#A02020",
+    blue1: "#3060C0",
+    blue2: "#204890",
+    hatRed: "#D82028",
+    hatDark: "#781010",
+    shirt1: "#3060C0",
+    shirt2: "#204890",
+    pant1: "#203040",
+    pant2: "#101820",
+    boot1: "#503010",
+    boot2: "#301808"
+};
+
+// =========================
+// PLAYER SPRITE (24×32)
+// =========================
+
+const playerSprite = [
+    [null,null,null,null,GBA.hatDark,GBA.hatRed,GBA.hatRed,GBA.hatDark,null,null,null,null],
+    [null,null,null,GBA.hatDark,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatDark,null,null,null],
+    [null,null,GBA.hatDark,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatDark,GBA.hatDark,null,null],
+    [null,GBA.hatDark,GBA.hatRed,GBA.hatRed,GBA.hatRed,GBA.hatDark,GBA.hatDark,GBA.hatRed,GBA.hatRed,GBA.hatDark,null,null],
+    [null,GBA.black,GBA.skin1,GBA.skin1,GBA.skin2,GBA.skin2,GBA.skin2,GBA.skin1,GBA.skin1,GBA.black,null,null],
+    [null,GBA.black,GBA.skin1,GBA.black,GBA.skin1,GBA.skin2,GBA.skin1,GBA.black,GBA.skin1,GBA.black,null,null],
+    [null,GBA.black,GBA.skin2,GBA.skin1,GBA.skin1,GBA.skin1,GBA.skin1,GBA.skin2,GBA.skin1,GBA.black,null,null],
+    [null,GBA.shirt2,GBA.shirt1,GBA.shirt1,GBA.shirt1,GBA.shirt1,GBA.shirt1,GBA.shirt1,GBA.shirt1,GBA.shirt2,null,null],
+    [null,GBA.shirt2,GBA.shirt1,GBA.shirt1,GBA.white,GBA.white,GBA.white,GBA.shirt1,GBA.shirt1,GBA.shirt2,null,null],
+    [null,GBA.shirt2,GBA.shirt1,GBA.white,GBA.white,GBA.white,GBA.white,GBA.white,GBA.shirt1,GBA.shirt2,null,null],
+    [null,GBA.pant2,GBA.pant1,GBA.pant1,GBA.red2,GBA.red2,GBA.red2,GBA.pant1,GBA.pant1,GBA.pant2,null,null],
+    [null,GBA.pant2,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant2,null,null],
+    [null,GBA.pant2,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant1,GBA.pant2,null,null],
+    [null,GBA.pant2,GBA.pant1,GBA.pant1,null,null,GBA.pant1,GBA.pant1,GBA.pant2,null,null,null],
+    [null,GBA.boot2,GBA.boot1,GBA.boot1,null,null,GBA.boot1,GBA.boot1,GBA.boot2,null,null,null],
+    [null,GBA.boot2,GBA.boot1,GBA.boot1,null,null,GBA.boot1,GBA.boot1,GBA.boot2,null,null,null]
+];
+
+// =========================
+// TREE TILE (ORIGINAL)
+// =========================
+const treeSprite = [
+    ["#2a4c22","#3c7a34","#4ca844","#3c7a34"],
+    ["#3c7a34","#4ca844","#57b34f","#4ca844"],
+    ["#2a4c22","#3c7a34","#4ca844","#3c7a34"],
+    ["#1d3a18","#2a4c22","#3c7a34","#2a4c22"]
+];
+
+// =========================
+// SHRINE (GOAL)
+// =========================
+const shrineSprite = [
+    ["#c9c0ff","#ffffff","#c9c0ff"],
+    ["#ffffff","#ffd860","#ffffff"],
+    ["#c9c0ff","#ffffff","#c9c0ff"]
+];
+
+// =========================
+// SPRITE DRAWING
+// =========================
+function drawSprite(sprite, x, y, scale=2) {
+    for (let r=0; r<sprite.length; r++) {
+        for (let c=0; c<sprite[r].length; c++) {
+            const col = sprite[r][c];
+            if (col)
+                ctx.fillStyle = col,
+                ctx.fillRect(x + c*scale, y + r*scale, scale, scale);
+        }
+    }
+}
+
+// =========================
+// MAP / TREES POSITIONS
+// =========================
+let trees = [];
+for (let i=0;i<30;i++){
+    trees.push({x:Math.random()*W, y:Math.random()*H});
+}
+
+// =========================
+// PLAYER
+// =========================
+let player = {
+    x: W/2,
+    y: H-50,
+    speed: 2,
+    dirX: 1,
+    dirY: 0
+};
+
+// =========================
+// ENEMIES
+// =========================
+let zombies = [];
+
+// =========================
+// BULLETS
+// =========================
+let bullets = [];
+
+// =========================
+// INPUT
+// =========================
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+// =========================
+// GAME STATE
+// =========================
+let frame = 0;
+let alive = true;
+let won = false;
+
+const messageBox = document.getElementById("message");
+const messageText = document.getElementById("text");
+
+// =========================
+// LOGIC
+// =========================
+
+function updatePlayer() {
+    let moved = false;
+
+    if (keys["w"]) { player.y -= player.speed; player.dirX=0; player.dirY=-1; moved=true; }
+    if (keys["s"]) { player.y += player.speed; player.dirX=0; player.dirY=1; moved=true; }
+    if (keys["a"]) { player.x -= player.speed; player.dirX=-1; player.dirY=0; moved=true; }
+    if (keys["d"]) { player.x += player.speed; player.dirX=1; player.dirY=0; moved=true; }
+
+    // Boundaries
+    player.x = Math.max(0, Math.min(W-24, player.x));
+    player.y = Math.max(0, Math.min(H-32, player.y));
+
+    if (keys[" "] && frame % 10 === 0)
+        shoot();
+}
+
+function shoot() {
+    bullets.push({
+        x: player.x+12,
+        y: player.y+16,
+        dx: player.dirX,
+        dy: player.dirY,
+        speed: 5
+    });
+}
+
+function updateBullets() {
+    bullets.forEach((b,i)=>{
+        b.x += b.dx*b.speed;
+        b.y += b.dy*b.speed;
+        if (b.x<0||b.x>W||b.y<0||b.y>H)
+            bullets.splice(i,1);
+    });
+}
+
+function spawnZombie() {
+    const edge = Math.floor(Math.random()*4);
+    let x,y;
+
+    if (edge===0){x=Math.random()*W; y=-20;}
+    if (edge===1){x=Math.random()*W; y=H+20;}
+    if (edge===2){x=-20; y=Math.random()*H;}
+    if (edge===3){x=W+20; y=Math.random()*H;}
+
+    zombies.push({x,y,speed:0.5});
+}
+
+function updateZombies() {
+    zombies.forEach((z,zi)=>{
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const d = Math.hypot(dx,dy);
+
+        z.x += dx/d*z.speed;
+        z.y += dy/d*z.speed;
+
+        if (Math.hypot(z.x-player.x,z.y-player.y)<20) {
+            alive=false;
+            message("You were caught!");
+        }
+
+        bullets.forEach((b,bi)=>{
+            if (Math.hypot(b.x-z.x,b.y-z.y)<15){
+                zombies.splice(zi,1);
+                bullets.splice(bi,1);
+            }
+        });
+    });
+}
+
+function checkShrine() {
+    if (player.y < 30 && player.x > W/2-40 && player.x < W/2+40) {
+        won = true;
+        message("You reached the Shrine!");
+    }
+}
+
+// =========================
+// RENDER
+// =========================
+function drawBackground() {
+    for (let y=0;y<H;y+=16){
+        for (let x=0;x<W;x+=16){
+            ctx.fillStyle = ((x/16+y/16)%2===0)?"#6bb24d":"#7bc45c";
+            ctx.fillRect(x,y,16,16);
+        }
+    }
+
+    // trees
+    trees.forEach(t=>{
+        drawSprite(treeSprite,t.x,t.y,4);
+    });
+
+    // shrine
+    drawSprite(shrineSprite,W/2-30,10,6);
+}
+
+function drawPlayer() { drawSprite(playerSprite,player.x,player.y,2); }
+function drawBullets(){ ctx.fillStyle="#fff"; bullets.forEach(b=>ctx.fillRect(b.x,b.y,4,4)); }
+function drawZombies(){
+    ctx.fillStyle="#65a040";
+    zombies.forEach(z=>ctx.fillRect(z.x,z.y,20,20));
+}
+
+// =========================
+// LOOP
+// =========================
+function loop() {
+    if (!alive||won) return;
+
+    frame++;
+    ctx.clearRect(0,0,W,H);
+
+    drawBackground();
+    updatePlayer();
+    updateBullets();
+    updateZombies();
+    checkShrine();
+
+    drawPlayer();
+    drawBullets();
+    drawZombies();
+
+    if (frame%90===0) spawnZombie();
+
+    requestAnimationFrame(loop);
+}
+
+// =========================
+// MESSAGE
+// =========================
+function message(text){
+    messageText.innerText = text;
+    messageBox.style.display="flex";
+}
+
+function restart(){
+    alive=true;
+    won=false;
+    zombies=[];
+    bullets=[];
+    player.x=W/2;
+    player.y=H-50;
+    frame=0;
+    messageBox.style.display="none";
+    loop();
+}
+
+loop();
+</script>
+
+</body>
+</html>
+
