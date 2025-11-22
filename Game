@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>8-Bit Zombie Dodge Game</title>
+
+<style>
+    body {
+        margin: 0;
+        background: #1b1b1b;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: monospace;
+        user-select: none;
+    }
+
+    canvas {
+        background: #222;
+        image-rendering: pixelated;
+        border: 4px solid #55ff55;
+    }
+
+    #gameOverScreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0,0,0,0.8);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        color: #55ff55;
+        font-size: 32px;
+    }
+
+    button {
+        margin-top: 20px;
+        background: #55ff55;
+        border: none;
+        padding: 12px 20px;
+        font-size: 20px;
+        cursor: pointer;
+        font-family: monospace;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="480" height="320"></canvas>
+
+<div id="gameOverScreen">
+    <div>GAME OVER</div>
+    <button onclick="restartGame()">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const w = canvas.width;
+const h = canvas.height;
+
+// -------- PLAYER ----------
+const player = {
+    x: w / 2,
+    y: h / 2,
+    size: 14,
+    speed: 3,
+};
+
+// -------- ZOMBIES ----------
+let zombies = [];
+let spawnRate = 60; // frames between spawns
+let frameCount = 0;
+let gameRunning = true;
+
+// 8-bit colors
+const green = "#55ff55";
+const darkGreen = "#228822";
+const red = "#ff5555";
+
+// -------- INPUT ----------
+let keys = {};
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+// -------- SPAWN A ZOMBIE ----------
+function createZombie() {
+    // spawn from random edge
+    const side = Math.floor(Math.random() * 4);
+    let zx, zy;
+
+    if (side === 0) { zx = Math.random() * w; zy = -20; }        // top
+    if (side === 1) { zx = Math.random() * w; zy = h + 20; }     // bottom
+    if (side === 2) { zx = -20; zy = Math.random() * h; }        // left
+    if (side === 3) { zx = w + 20; zy = Math.random() * h; }     // right
+
+    zombies.push({
+        x: zx,
+        y: zy,
+        size: 14,
+        speed: 1.2 + Math.random() * 1.5,
+    });
+}
+
+// -------- DRAW PLAYER ----------
+function drawPlayer() {
+    ctx.fillStyle = green;
+    ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+}
+
+// -------- DRAW ZOMBIE ----------
+function drawZombie(z) {
+    ctx.fillStyle = red;
+    ctx.fillRect(z.x - z.size/2, z.y - z.size/2, z.size, z.size);
+}
+
+// -------- UPDATE PLAYER ----------
+function updatePlayer() {
+    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
+
+    // boundaries
+    player.x = Math.max(0, Math.min(w, player.x));
+    player.y = Math.max(0, Math.min(h, player.y));
+}
+
+// -------- UPDATE ZOMBIES ----------
+function updateZombies() {
+    zombies.forEach(z => {
+        // move towards player
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const dist = Math.hypot(dx, dy);
+
+        z.x += (dx / dist) * z.speed;
+        z.y += (dy / dist) * z.speed;
+
+        // collision check
+        if (dist < (player.size + z.size) / 2) {
+            gameOver();
+        }
+    });
+}
+
+// -------- CLEAR SCREEN ----------
+function clear() {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, w, h);
+}
+
+// -------- GAME LOOP ----------
+function loop() {
+    if (!gameRunning) return;
+
+    clear();
+    updatePlayer();
+    updateZombies();
+
+    drawPlayer();
+    zombies.forEach(drawZombie);
+
+    frameCount++;
+    if (frameCount % spawnRate === 0) {
+        createZombie();
+
+        // difficulty increases
+        if (spawnRate > 20) spawnRate -= 2;
+    }
+
+    requestAnimationFrame(loop);
+}
+
+// -------- GAME OVER ----------
+function gameOver() {
+    gameRunning = false;
+    document.getElementById("gameOverScreen").style.display = "flex";
+}
+
+// -------- RESTART ----------
+function restartGame() {
+    zombies = [];
+    spawnRate = 60;
+    frameCount = 0;
+
+    player.x = w / 2;
+    player.y = h / 2;
+
+    gameRunning = true;
+    document.getElementById("gameOverScreen").style.display = "none";
+    loop();
+}
+
+loop();
+</script>
+
+</body>
+</html>
