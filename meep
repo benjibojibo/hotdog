@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GBA-Style Zombie Adventure</title>
+<style>
+body {
+  margin:0;
+  background:#000;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+canvas {
+  border:6px solid #203818;
+  image-rendering: pixelated;
+}
+#msg {
+  position:fixed;
+  top:0; left:0;
+  width:100vw; height:100vh;
+  background:rgba(0,0,0,0.8);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  color:#fff;
+  font-family:monospace;
+  font-size:32px;
+}
+button {
+  margin-top:20px;
+  padding:10px 20px;
+  font-size:24px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="480" height="320"></canvas>
+<div id="msg">
+  <div id="msgtext"></div>
+  <button onclick="restart()">Restart</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+// =========================
+// TILE SETTINGS
+// =========================
+const TS = 16; // tile size in pixels
+const COLORS = {
+  grass:"#6bb24d",
+  path:"#d6c48a",
+  tree:"#3c7a34",
+  water:"#4aa3d8",
+  exit:"#ffd860",
+};
+
+// =========================
+// LEVEL MAP (non-square, irregular)
+// =========================
+const MAP = [
+"TTTTTTTTTTTTTTTTTTTTTTTTTT",
+"TGGGGGGGGGGGGGGGGGGGGGGGTT",
+"TGGPPPPPPPGGGPPPPPPPGGGGTT",
+"TGGPPWWWWWWGGWWWWWWPPGGGTT",
+"TGGPPWWWWWWGGWWWWWWPPGGGTT",
+"TGGPPPPPPPGGGPPPPPPPGGGGTT",
+"TGGGGGGGGGGGGGGGGGGGGGGGTT",
+"TGGGGGGGGGGGGGGGGGGGGGGGTT",
+"TGGGGGGGGGGGGGGGGGGGGGGGTT",
+"TGGGGGGGPEGGGGGGGGGGGGGTT",
+"TTTTTTTTTTTTTTTTTTTTTTTTTT",
+];
+
+// =========================
+// PLAYER
+// =========================
+const player = {
+  x: 80,
+  y: 200,
+  w: 24,
+  h: 32,
+  speed: 2,
+  dirX:1,
+  dirY:0
+};
+
+// =========================
+// INPUT
+// =========================
+const keys = {};
+document.addEventListener("keydown", e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup", e=>keys[e.key.toLowerCase()]=false);
+
+// =========================
+// BULLETS
+// =========================
+const bullets = [];
+
+// =========================
+// ZOMBIES
+// =========================
+const zombies = [];
+
+// =========================
+// CAMERA
+// =========================
+function getCamera() {
+  let camX = player.x - W/2 + player.w/2;
+  let camY = player.y - H/2 + player.h/2;
+  // clamp camera to map
+  camX = Math.max(0, Math.min(camX, MAP[0].length*TS - W));
+  camY = Math.max(0, Math.min(camY, MAP.length*TS - H));
+  return {camX, camY};
+}
+
+// =========================
+// DRAWING
+// =========================
+function drawTile(tile,x,y){
+  switch(tile){
+    case "G": ctx.fillStyle=COLORS.grass; break;
+    case "P": ctx.fillStyle=COLORS.path; break;
+    case "T": ctx.fillStyle=COLORS.tree; break;
+    case "W": ctx.fillStyle=COLORS.water; break;
+    case "E": ctx.fillStyle=COLORS.exit; break;
+    default: ctx.fillStyle="#000"; break;
+  }
+  ctx.fillRect(x,y,TS,TS);
+}
+
+// Simple 24x32 player sprite
+function drawPlayer(x,y){
+  ctx.fillStyle="#D82028"; ctx.fillRect(x+4,y,16,8); // hat
+  ctx.fillStyle="#F6D6AD"; ctx.fillRect(x+6,y+8,12,8); // face
+  ctx.fillStyle="#3060C0"; ctx.fillRect(x+4,y+16,16,12); // shirt
+  ctx.fillStyle="#203040"; ctx.fillRect(x+4,y+28,16,4); // pants
+}
+
+// Zombie as green rectangle
+function drawZombie(z){ ctx.fillStyle="#65a040"; ctx.fillRect(z.x,z.y,20,20); }
+
+// =========================
+// COLLISION
+// =========================
+function solidAt(x,y){
+  const tx = Math.floor(x/TS);
+  const ty = Math.floor(y/TS);
+  if (ty<0 || ty>=MAP.length || tx<0 || tx>=MAP[0].length) return true;
+  const t = MAP[ty][tx];
+  return t==="T" || t==="W";
+}
+
+// =========================
+// SPAWN ZOMBIE
+// =========================
+function spawnZombie(){
+  let edge = Math.floor(Math.random()*4);
+  let x=0,y=0;
+  if(edge===0){x=Math.random()*W; y=-20;}
+  if(edge===1){x=Math.random()*W; y=H+20;}
+  if(edge===2){x=-20; y=Math.random()*H;}
+  if(edge===3){x=W+20; y=Math.random()*H;}
+  zombies.push({x,y,speed:0.5});
+}
+
+// =========================
+// UPDATE FUNCTIONS
+// =========================
+function updatePlayer(){
+  let nx=player.x, ny=player.y;
+  if(keys["w"]){ ny -= player.speed; player.dirX=0; player.dirY=-1; }
+  if(keys["s"]){ ny += player.speed; player.dirX=0; player.dirY=1; }
+  if(keys["a"]){ nx -= player.speed; player.dirX=-1; player.dirY=0; }
+  if(keys["d"]){ nx += player.speed; player.dirX=1; player.dirY=0; }
+
+  // collision
+  if(!solidAt(nx,player.y)) player.x=nx;
+  if(!solidAt(player.x,ny)) player.y=ny;
+
+  if(keys[" "] && frame%10===0){
+    bullets.push({x:player.x+12,y:player.y+16,dx:player.dirX,dy:player.dirY,speed:4});
+  }
+}
+
+function updateBullets(){
+  bullets.forEach((b,i)=>{
+    b.x += b.dx*b.speed;
+    b.y += b.dy*b.speed;
+    // remove out of bounds
+    if(b.x<0||b.x>MAP[0].length*TS||b.y<0||b.y>MAP.length*TS) bullets.splice(i,1);
+  });
+}
+
+function updateZombies(){
+  zombies.forEach((z,zi)=>{
+    const dx=player.x - z.x;
+    const dy=player.y - z.y;
+    const d=Math.hypot(dx,dy);
+    z.x += dx/d*z.speed;
+    z.y += dy/d*z.speed;
+    if(Math.hypot(z.x-player.x,z.y-player.y)<16) gameOver("You were caught!");
+    bullets.forEach((b,bi)=>{
+      if(Math.hypot(b.x-z.x,b.y-z.y)<12){
+        zombies.splice(zi,1);
+        bullets.splice(bi,1);
+      }
+    });
+  });
+}
+
+// =========================
+// CHECK EXIT
+// =========================
+function checkExit(){
+  const tx=Math.floor((player.x+player.w/2)/TS);
+  const ty=Math.floor((player.y+player.h/2)/TS);
+  if(MAP[ty][tx]==="E") gameOver("You reached the exit!");
+}
+
+// =========================
+// GAME LOOP
+// =========================
+let frame=0;
+function loop(){
+  frame++;
+  ctx.clearRect(0,0,W,H);
+
+  const cam=getCamera();
+
+  // draw tiles
+  for(let y=0;y<MAP.length;y++){
+    for(let x=0;x<MAP[0].length;x++){
+      drawTile(MAP[y][x], x*TS-cam.camX, y*TS-cam.camY);
+    }
+  }
+
+  updatePlayer();
+  updateBullets();
+  updateZombies();
+  checkExit();
+
+  drawPlayer(player.x-cam.camX, player.y-cam.camY);
+  bullets.forEach(b=>ctx.fillRect(b.x-cam.camX,b.y-cam.camY,4,4));
+  zombies.forEach(z=>drawZombie({x:z.x-cam.camX,y:z.y-cam.camY}));
+
+  if(frame%120===0) spawnZombie();
+
+  requestAnimationFrame(loop);
+}
+
+// =========================
+// GAME OVER
+// =========================
+const msg = document.getElementById("msg");
+const msgtext = document.getElementById("msgtext");
+function gameOver(text){
+  msgtext.innerText=text;
+  msg.style.display="flex";
+}
+function restart(){
+  msg.style.display="none";
+  player.x=80; player.y=200;
+  bullets.length=0; zombies.length=0;
+  frame=0;
+  loop();
+}
+
+loop();
+</script>
+</body>
+</html>
+
